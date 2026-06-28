@@ -479,8 +479,7 @@ function Invoke-FSMOTransfer {
     #>
     param(
         [PSCustomObject]$TargetDC,
-        [string[]]$Roles,
-        [bool]$ForceSeize = $false
+        [string[]]$Roles
     )
 
     Write-Section "Transfert des rôles FSMO"
@@ -498,19 +497,12 @@ function Invoke-FSMOTransfer {
     Write-Host "    │  RÉSUMÉ DE L'OPÉRATION                                    │" -ForegroundColor $Script:Colors.Warning
     Write-Host "    ├────────────────────────────────────────────────────────────┤" -ForegroundColor DarkGray
     Write-Host "    │  DC Cible  : $($TargetDC.HostName)" -ForegroundColor White
-    Write-Host "    │  Mode      : $(if ($ForceSeize) { 'SAISIE (Seize) — DANGEREUX' } else { 'Transfert (Move)' })" -ForegroundColor $(if ($ForceSeize) { $Script:Colors.Error } else { $Script:Colors.Success })
+    Write-Host "    │  Mode      : Transfert (Move)" -ForegroundColor $Script:Colors.Success
     Write-Host "    │  Rôles     :" -ForegroundColor White
     foreach ($role in $Roles) {
         Write-Host "    │    → $($friendlyNames[$role])" -ForegroundColor $Script:Colors.Title
     }
     Write-Host "    └────────────────────────────────────────────────────────────┘" -ForegroundColor DarkGray
-
-    if ($ForceSeize) {
-        Write-Host ""
-        Write-Host "    ⚠  ATTENTION : La saisie (seize) est une opération IRRÉVERSIBLE." -ForegroundColor $Script:Colors.Error
-        Write-Host "       L'ancien détenteur du rôle NE DOIT PLUS JAMAIS être remis en ligne" -ForegroundColor $Script:Colors.Error
-        Write-Host "       sans avoir été au préalable réinstallé (dcpromo /forceremoval)." -ForegroundColor $Script:Colors.Error
-    }
 
     if (-not (Confirm-Action "Confirmez-vous l'opération ?")) {
         Write-StatusLine -Label "Opération" -Value "Annulée par l'utilisateur" -Status Warning
@@ -527,23 +519,12 @@ function Invoke-FSMOTransfer {
         Write-Host "    ─── Transfert : $roleFriendly ───" -ForegroundColor $Script:Colors.Title
 
         try {
-            if ($ForceSeize) {
-                # Saisie (seize) — à utiliser seulement si l'ancien DC est définitivement hors service
-                Move-ADDirectoryServerOperationMasterRole `
-                    -Identity $TargetDC.Name `
-                    -OperationMasterRole $role `
-                    -Force `
-                    -Confirm:$false `
-                    -ErrorAction Stop
-            }
-            else {
-                # Transfert normal (graceful)
-                Move-ADDirectoryServerOperationMasterRole `
-                    -Identity $TargetDC.Name `
-                    -OperationMasterRole $role `
-                    -Confirm:$false `
-                    -ErrorAction Stop
-            }
+            # Transfert normal (graceful)
+            Move-ADDirectoryServerOperationMasterRole `
+                -Identity $TargetDC.Name `
+                -OperationMasterRole $role `
+                -Confirm:$false `
+                -ErrorAction Stop
 
             Write-StatusLine -Label $roleFriendly -Value "Transféré avec succès vers $($TargetDC.HostName)" -Status Success
             $successCount++
@@ -551,31 +532,6 @@ function Invoke-FSMOTransfer {
         catch {
             Write-StatusLine -Label $roleFriendly -Value "ÉCHEC — $($_.Exception.Message)" -Status Error
             $failCount++
-
-            # Si le transfert échoue, proposer la saisie (seize)
-            if (-not $ForceSeize) {
-                Write-Host ""
-                Write-Host "    Le transfert a échoué. Cela peut signifier que le DC détenteur actuel" -ForegroundColor $Script:Colors.Warning
-                Write-Host "    n'est pas joignable." -ForegroundColor $Script:Colors.Warning
-
-                if (Confirm-Action "Voulez-vous forcer la saisie (seize) de ce rôle ? (DANGEREUX)") {
-                    try {
-                        Move-ADDirectoryServerOperationMasterRole `
-                            -Identity $TargetDC.Name `
-                            -OperationMasterRole $role `
-                            -Force `
-                            -Confirm:$false `
-                            -ErrorAction Stop
-
-                        Write-StatusLine -Label $roleFriendly -Value "Saisi (seized) avec succès vers $($TargetDC.HostName)" -Status Success
-                        $successCount++
-                        $failCount--
-                    }
-                    catch {
-                        Write-StatusLine -Label "$roleFriendly (seize)" -Value "ÉCHEC — $($_.Exception.Message)" -Status Error
-                    }
-                }
-            }
         }
     }
 
@@ -680,20 +636,10 @@ function Main {
         return
     }
 
-    # ── Étape 8 : Mode transfert ou saisie ──
-    Write-Host ""
-    Write-Host "    Mode de transfert :" -ForegroundColor $Script:Colors.Prompt
-    Write-Host "      1. Transfert normal (recommandé — le DC source doit être en ligne)" -ForegroundColor White
-    Write-Host "      2. Saisie forcée (seize — UNIQUEMENT si le DC source est définitivement hors service)" -ForegroundColor $Script:Colors.Warning
-    Write-Host ""
-    Write-Host "    Votre choix [1/2] : " -ForegroundColor $Script:Colors.Prompt -NoNewline
-    $modeChoice = Read-Host
-    $forceSeize = ($modeChoice -eq '2')
+    # ── Étape 8 : Exécution du transfert ──
+    Invoke-FSMOTransfer -TargetDC $targetDC -Roles $selectedRoles
 
-    # ── Étape 9 : Exécution du transfert ──
-    Invoke-FSMOTransfer -TargetDC $targetDC -Roles $selectedRoles -ForceSeize $forceSeize
-
-    # ── Étape 10 : Vérification post-transfert ──
+    # ── Étape 9 : Vérification post-transfert ──
     Show-PostTransferVerification
 
     # ── Fin ──
@@ -709,7 +655,7 @@ function Main {
         User       = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
         TargetDC   = $targetDC.HostName
         Roles      = ($selectedRoles -join ', ')
-        Mode       = if ($forceSeize) { 'Seize' } else { 'Transfer' }
+        Mode       = 'Transfer'
     }
     Write-Host "    Journal de l'opération :" -ForegroundColor Gray
     $logEntry | Format-List | Out-String | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }

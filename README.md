@@ -1,6 +1,6 @@
 # Transfert des rôles FSMO - Active Directory
 
-Ce dépôt contient un script PowerShell interactif et robuste, `Transfer-FSMORoles.ps1`, conçu pour simplifier et sécuriser le transfert ou la saisie (seize) des rôles FSMO (Flexible Single Master Operations) entre les contrôleurs de domaine (DC) d'un environnement Active Directory.
+Ce dépôt contient un script PowerShell interactif et robuste, `Transfer-FSMORoles.ps1`, conçu pour simplifier et sécuriser le transfert des rôles FSMO (Flexible Single Master Operations) entre les contrôleurs de domaine (DC) d'un environnement Active Directory.
 
 ## 📋 Description
 
@@ -20,7 +20,7 @@ Le script guide l'administrateur étape par étape dans le processus de transfer
 4. **Transfert personnalisé :**
    - Sélection du DC cible par un simple numéro.
    - Sélection à la carte des rôles à transférer (ou tous d'un coup).
-   - Supporte le mode "Transfert normal" (le DC source est en ligne) et le mode "Saisie forcée / Seize" (le DC source est définitivement hors service).
+   - Supporte le mode "Transfert normal" (le DC source est en ligne).
 5. **Vérification post-opération :**
    - Affiche les nouveaux détenteurs des rôles après l'exécution.
    - Utilise `netdom query fsmo` si disponible pour une double vérification.
@@ -48,10 +48,6 @@ Le script guide l'administrateur étape par étape dans le processus de transfer
 
 4. Suivez les instructions interactives à l'écran.
 
-## ⚠️ Avertissement concernant le mode "Saisie" (Seize)
-
-Le script propose une option de **saisie forcée (seize)**. Cette opération est **strictement réservée** aux situations où l'ancien contrôleur de domaine (détenteur des rôles) est définitivement hors service ou détruit.
-Si vous effectuez un "seize", l'ancien DC ne doit **jamais** être reconnecté au réseau avant d'avoir été complètement formaté ou rétrogradé de force (metadata cleanup).
 
 ## 📝 Licence et Crédits
 
