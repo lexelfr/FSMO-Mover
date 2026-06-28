@@ -13,6 +13,7 @@ Le script guide l'administrateur étape par étape dans le processus de transfer
    - Vérifie la présence et le chargement du module PowerShell `ActiveDirectory`.
    - Analyse l'appartenance de l'utilisateur courant aux groupes critiques (`Schema Admins`, `Enterprise Admins`, `Domain Admins`).
    - *NOUVEAU* : Propose une **élévation temporaire** au groupe `Schema Admins` si l'utilisateur est un `Domain Admin`, puis retire cette élévation proprement à la fin de l'opération si le transfert du Schema Master a réussi.
+   - **Support multi-langue universel** : Détecte automatiquement les groupes critiques (Schema Admins, Enterprise Admins, Domain Admins) peu importe la langue du système d'exploitation Windows (grâce à la résolution des SIDs bien connus).
 2. **Gestion des tickets Kerberos :**
    - Propose de purger et de renouveler automatiquement les tickets Kerberos (utile si l'utilisateur vient d'être ajouté au groupe `Schema Admins`).
 3. **Découverte interactive de l'environnement :**
@@ -54,3 +55,4 @@ Le script guide l'administrateur étape par étape dans le processus de transfer
 
 Script généré et maintenu par Antigravity.
 Date de création : Juin 2026.
+Version : 1.1

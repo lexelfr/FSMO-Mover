@@ -16,7 +16,7 @@
 .NOTES
     Auteur  : Script généré par Antigravity
     Date    : 2026-06-28
-    Version : 1.0
+    Version : 1.1
 #>
 
 [CmdletBinding()]
