@@ -55,4 +55,19 @@ Le script guide l'administrateur étape par étape dans le processus de transfer
 
 Script généré et maintenu par Antigravity.
 Date de création : Juin 2026.
-Version : 1.1
+Version : 1.2
+
+## 📋 Changelog
+
+### v1.2 (2026-06-28)
+- **Correction** : Le retrait du groupe `Schema Admins` après un transfert réussi est maintenant garanti grâce à des variables de portée script (`$Script:`), évitant tout problème de propagation d'état.
+- **Correction** : Ajout d'un avertissement explicite si l'utilisateur refuse le retrait du groupe.
+- **Correction** : Correction de 4 bugs internes (type de retour de `Test-SchemaAdminMembership`, variable réservée `$input`, flux Kerberos absent, `$transferResults` pouvant être nul).
+- **Amélioration** : Recherche des groupes AD par SID universel (compatible toutes langues).
+
+### v1.1 (2026-06-28)
+- **Nouveau** : Élévation temporaire au groupe `Schema Admins` si l'utilisateur est `Domain Admin`.
+- **Nouveau** : Retrait automatique (avec confirmation) du groupe `Schema Admins` après un transfert réussi du Schema Master.
+- **Nouveau** : Affichage du DC Source dans le résumé de l'opération.
+- **Nouveau** : Support multi-langue universel (détection par SID).
+- **Suppression** : Option de saisie forcée (Seize) retirée.

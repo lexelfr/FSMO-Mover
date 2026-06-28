@@ -16,7 +16,7 @@
 .NOTES
     Auteur  : Script généré par Antigravity
     Date    : 2026-06-28
-    Version : 1.1
+    Version : 1.2
 #>
 
 [CmdletBinding()]
@@ -34,6 +34,11 @@ $Script:Colors = @{
     Info    = 'White'
     Prompt  = 'Magenta'
 }
+
+# Variables de suivi de l'élévation temporaire Schema Admins
+$Script:TempSchemaAdmin   = $false
+$Script:SchemaGroupForCleanup = $null
+$Script:SamNameForCleanup     = $null
 
 $Script:FSMORoleNames = @{
     0 = 'Schema Master'
@@ -673,8 +678,10 @@ function Main {
                     try {
                         Add-ADGroupMember -Identity $groupStatus.SchemaGroup -Members $groupStatus.SamName -ErrorAction Stop
                         Write-StatusLine -Label "Ajout Schema Admins" -Value "Réussi" -Status Success
-                        $groupStatus.SchemaAdmins = $true
-                        $groupStatus.TempSchemaAdmin = $true
+                        # Stocker l'état dans des variables de portée script pour garantir la persistance
+                        $Script:TempSchemaAdmin       = $true
+                        $Script:SchemaGroupForCleanup = $groupStatus.SchemaGroup
+                        $Script:SamNameForCleanup     = $groupStatus.SamName
                         
                         Invoke-KerberosTicketRenewal
                     } catch {
@@ -697,14 +704,18 @@ function Main {
     Show-PostTransferVerification
 
     # ── Étape 10 : Nettoyage temporaire Schema Admins ──
-    if ($groupStatus.TempSchemaAdmin -and $transferResults -and $transferResults['SchemaMaster']) {
-        if (Confirm-Action "Le rôle Schema Master a été transféré avec succès. Voulez-vous être retiré du groupe Schema Admins ?") {
+    if ($Script:TempSchemaAdmin -and $transferResults -and $transferResults['SchemaMaster']) {
+        Write-Host ""
+        Write-StatusLine -Label "Schema Master" -Value "Transféré avec succès, élévation temporaire active" -Status Success
+        if (Confirm-Action "Voulez-vous être retiré du groupe Schema Admins ?") {
             try {
-                Remove-ADGroupMember -Identity $groupStatus.SchemaGroup -Members $groupStatus.SamName -Confirm:$false -ErrorAction Stop
+                Remove-ADGroupMember -Identity $Script:SchemaGroupForCleanup -Members $Script:SamNameForCleanup -Confirm:$false -ErrorAction Stop
                 Write-StatusLine -Label "Retrait Schema Admins" -Value "Réussi" -Status Success
             } catch {
                 Write-StatusLine -Label "Retrait Schema Admins" -Value "ÉCHEC — $($_.Exception.Message)" -Status Error
             }
+        } else {
+            Write-StatusLine -Label "Retrait Schema Admins" -Value "Ignoré — pensez à vous retirer manuellement du groupe !" -Status Warning
         }
     }
 
