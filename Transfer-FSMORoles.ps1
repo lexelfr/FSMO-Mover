@@ -192,7 +192,8 @@ function Test-SchemaAdminMembership {
     }
     catch {
         Write-StatusLine -Label "Erreur AD" -Value $_.Exception.Message -Status Error
-        return $false
+        # Retourner un hashtable valide même en cas d'erreur pour éviter les crashs en aval
+        return @{ SchemaAdmins = $false; EnterpriseAdmins = $false; DomainAdmins = $false; TempSchemaAdmin = $false; SchemaGroup = $null; SamName = $null }
     }
 
     # Affichage des résultats
@@ -436,11 +437,11 @@ function Select-FSMORoles {
     Write-Host "    A. Tous les rôles" -ForegroundColor $Script:Colors.Prompt
     Write-Host ""
     Write-Host "    Entrez les numéros séparés par des virgules (ex: 1,3,5) ou 'A' pour tous : " -ForegroundColor $Script:Colors.Prompt -NoNewline
-    $input = Read-Host
+    $userInput = Read-Host
 
     $selectedRoles = @()
 
-    if ($input -match '^[Aa]$') {
+    if ($userInput -match '^[Aa]$') {
         $selectedRoles = @(
             'SchemaMaster',
             'DomainNamingMaster',
@@ -451,7 +452,7 @@ function Select-FSMORoles {
         Write-StatusLine -Label "Sélection" -Value "Tous les rôles (5/5)" -Status Info
     }
     else {
-        $numbers = $input -split ',' | ForEach-Object { $_.Trim() }
+        $numbers = $userInput -split ',' | ForEach-Object { $_.Trim() }
         $roleMap = @{
             '1' = 'SchemaMaster'
             '2' = 'DomainNamingMaster'
@@ -524,7 +525,7 @@ function Invoke-FSMOTransfer {
 
     if (-not (Confirm-Action "Confirmez-vous l'opération ?")) {
         Write-StatusLine -Label "Opération" -Value "Annulée par l'utilisateur" -Status Warning
-        return
+        return @{}
     }
 
     # Exécution du transfert
@@ -632,7 +633,12 @@ function Main {
     # ── Étape 3 : Vérification Schema Admins / Enterprise Admins ──
     $groupStatus = Test-SchemaAdminMembership
 
-    # ── Étape 4 : Liste des DC ──
+    # ── Étape 4 : Proposition de renouvellement Kerberos (si déjà Schema Admin) ──
+    if ($groupStatus.SchemaAdmins) {
+        Invoke-KerberosTicketRenewal
+    }
+
+    # ── Étape 5 : Liste des DC ──
     $dcList = Get-DomainControllerList
     if (-not $dcList) {
         Write-Host ""
@@ -691,7 +697,7 @@ function Main {
     Show-PostTransferVerification
 
     # ── Étape 10 : Nettoyage temporaire Schema Admins ──
-    if ($groupStatus.TempSchemaAdmin -and $transferResults['SchemaMaster']) {
+    if ($groupStatus.TempSchemaAdmin -and $transferResults -and $transferResults['SchemaMaster']) {
         if (Confirm-Action "Le rôle Schema Master a été transféré avec succès. Voulez-vous être retiré du groupe Schema Admins ?") {
             try {
                 Remove-ADGroupMember -Identity $groupStatus.SchemaGroup -Members $groupStatus.SamName -Confirm:$false -ErrorAction Stop
