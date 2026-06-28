@@ -205,22 +205,7 @@ function Test-SchemaAdminMembership {
     if (-not $results.SchemaAdmins) {
         Write-Host ""
         Write-Host "    ⚠  ATTENTION : Vous n'êtes pas membre du groupe Schema Admins." -ForegroundColor $Script:Colors.Warning
-        Write-Host "       Le transfert du rôle Schema Master échouera sans cette appartenance." -ForegroundColor $Script:Colors.Warning
-        
-        if ($results.DomainAdmins -and $results.SchemaGroup) {
-            if (Confirm-Action "Voulez-vous être ajouté temporairement au groupe Schema Admins ?") {
-                try {
-                    Add-ADGroupMember -Identity $results.SchemaGroup -Members $samName -ErrorAction Stop
-                    Write-StatusLine -Label "Ajout Schema Admins" -Value "Réussi" -Status Success
-                    $results.SchemaAdmins = $true
-                    $results.TempSchemaAdmin = $true
-                } catch {
-                    Write-StatusLine -Label "Ajout Schema Admins" -Value "ÉCHEC — $($_.Exception.Message)" -Status Error
-                }
-            }
-        } else {
-            Write-Host "       Ajoutez votre compte au groupe Schema Admins et renouvelez votre ticket Kerberos." -ForegroundColor $Script:Colors.Warning
-        }
+        Write-Host "       Le transfert du rôle Schema Master nécessitera une élévation de privilèges." -ForegroundColor $Script:Colors.Warning
     }
 
     if (-not $results.EnterpriseAdmins) {
@@ -508,6 +493,16 @@ function Invoke-FSMOTransfer {
         'InfrastructureMaster'  = 'Infrastructure Master'
     }
 
+    $domain = Get-ADDomain
+    $forest = Get-ADForest
+    $currentHolders = @{
+        'SchemaMaster'          = ($forest.SchemaMaster -split '\.')[0]
+        'DomainNamingMaster'    = ($forest.DomainNamingMaster -split '\.')[0]
+        'PDCEmulator'           = ($domain.PDCEmulator -split '\.')[0]
+        'RIDMaster'             = ($domain.RIDMaster -split '\.')[0]
+        'InfrastructureMaster'  = ($domain.InfrastructureMaster -split '\.')[0]
+    }
+
     # Résumé avant transfert
     Write-Host "    ┌────────────────────────────────────────────────────────────┐" -ForegroundColor DarkGray
     Write-Host "    │  RÉSUMÉ DE L'OPÉRATION                                    │" -ForegroundColor $Script:Colors.Warning
@@ -516,7 +511,10 @@ function Invoke-FSMOTransfer {
     Write-Host "    │  Mode      : Transfert (Move)" -ForegroundColor $Script:Colors.Success
     Write-Host "    │  Rôles     :" -ForegroundColor White
     foreach ($role in $Roles) {
-        Write-Host "    │    → $($friendlyNames[$role])" -ForegroundColor $Script:Colors.Title
+        $sourceDC = $currentHolders[$role]
+        Write-Host "    │    → " -ForegroundColor White -NoNewline
+        Write-Host ("{0,-25}" -f $friendlyNames[$role]) -ForegroundColor $Script:Colors.Title -NoNewline
+        Write-Host "(Source : $sourceDC)" -ForegroundColor Gray
     }
     Write-Host "    └────────────────────────────────────────────────────────────┘" -ForegroundColor DarkGray
 
@@ -630,10 +628,7 @@ function Main {
     # ── Étape 3 : Vérification Schema Admins / Enterprise Admins ──
     $groupStatus = Test-SchemaAdminMembership
 
-    # ── Étape 4 : Proposition de renouvellement Kerberos ──
-    Invoke-KerberosTicketRenewal
-
-    # ── Étape 5 : Liste des DC ──
+    # ── Étape 4 : Liste des DC ──
     $dcList = Get-DomainControllerList
     if (-not $dcList) {
         Write-Host ""
@@ -655,6 +650,34 @@ function Main {
         Write-Host ""
         Write-Host "    ✗ Aucun rôle sélectionné. Opération annulée." -ForegroundColor $Script:Colors.Error
         return
+    }
+
+    # ── Étape 7.5 : Élévation Schema Admins si nécessaire ──
+    if ($selectedRoles -contains 'SchemaMaster') {
+        if (-not $groupStatus.SchemaAdmins) {
+            Write-Host ""
+            Write-Host "    ⚠  Le rôle 'Schema Master' a été sélectionné, mais vous n'êtes pas membre de 'Schema Admins'." -ForegroundColor $Script:Colors.Warning
+            
+            if ($groupStatus.DomainAdmins -and $groupStatus.SchemaGroup) {
+                if (Confirm-Action "Voulez-vous être ajouté temporairement au groupe Schema Admins ?") {
+                    try {
+                        Add-ADGroupMember -Identity $groupStatus.SchemaGroup -Members $groupStatus.SamName -ErrorAction Stop
+                        Write-StatusLine -Label "Ajout Schema Admins" -Value "Réussi" -Status Success
+                        $groupStatus.SchemaAdmins = $true
+                        $groupStatus.TempSchemaAdmin = $true
+                        
+                        Invoke-KerberosTicketRenewal
+                    } catch {
+                        Write-StatusLine -Label "Ajout Schema Admins" -Value "ÉCHEC — $($_.Exception.Message)" -Status Error
+                        Write-Host "    Le transfert du Schema Master va très probablement échouer." -ForegroundColor $Script:Colors.Error
+                    }
+                } else {
+                    Write-Host "    Le transfert du Schema Master risque d'échouer." -ForegroundColor $Script:Colors.Error
+                }
+            } else {
+                Write-Host "    Impossible de vous ajouter (vous n'êtes pas Domain Admin ou le groupe est introuvable)." -ForegroundColor $Script:Colors.Error
+            }
+        }
     }
 
     # ── Étape 8 : Exécution du transfert ──
