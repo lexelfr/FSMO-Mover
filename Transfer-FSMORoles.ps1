@@ -130,7 +130,7 @@ function Test-SchemaAdminMembership {
     $userName = $currentUser.Name
     Write-StatusLine -Label "Utilisateur courant" -Value $userName -Status Info
 
-    $results = @{ SchemaAdmins = $false; EnterpriseAdmins = $false; DomainAdmins = $false }
+    $results = @{ SchemaAdmins = $false; EnterpriseAdmins = $false; DomainAdmins = $false; TempSchemaAdmin = $false; SchemaGroup = $null; SamName = $null }
 
     try {
         # Récupération du SamAccountName
@@ -147,6 +147,7 @@ function Test-SchemaAdminMembership {
         try {
             $schemaAdminsGroup = Get-ADGroup -Filter "Name -eq 'Schema Admins'" -SearchBase $domainDN
             if ($schemaAdminsGroup) {
+                $results.SchemaGroup = $schemaAdminsGroup
                 $members = Get-ADGroupMember -Identity $schemaAdminsGroup -Recursive | Select-Object -ExpandProperty SamAccountName
                 $results.SchemaAdmins = $members -contains $samName
             }
@@ -156,6 +157,7 @@ function Test-SchemaAdminMembership {
             try {
                 $schemaAdminsGroup = Get-ADGroup -Filter "SID -like '*-518'"
                 if ($schemaAdminsGroup) {
+                    $results.SchemaGroup = $schemaAdminsGroup
                     $members = Get-ADGroupMember -Identity $schemaAdminsGroup -Recursive | Select-Object -ExpandProperty SamAccountName
                     $results.SchemaAdmins = $members -contains $samName
                 }
@@ -200,11 +202,27 @@ function Test-SchemaAdminMembership {
     Write-StatusLine -Label "Enterprise Admins" -Value $(if ($results.EnterpriseAdmins) { "Membre" } else { "Non membre" }) -Status $statusEA
     Write-StatusLine -Label "Domain Admins" -Value $(if ($results.DomainAdmins) { "Membre" } else { "Non membre" }) -Status $statusDA
 
+    $results.SamName = $samName
+
     if (-not $results.SchemaAdmins) {
         Write-Host ""
         Write-Host "    ⚠  ATTENTION : Vous n'êtes pas membre du groupe Schema Admins." -ForegroundColor $Script:Colors.Warning
         Write-Host "       Le transfert du rôle Schema Master échouera sans cette appartenance." -ForegroundColor $Script:Colors.Warning
-        Write-Host "       Ajoutez votre compte au groupe Schema Admins et renouvelez votre ticket Kerberos." -ForegroundColor $Script:Colors.Warning
+        
+        if ($results.DomainAdmins -and $results.SchemaGroup) {
+            if (Confirm-Action "Voulez-vous être ajouté temporairement au groupe Schema Admins ?") {
+                try {
+                    Add-ADGroupMember -Identity $results.SchemaGroup -Members $samName -ErrorAction Stop
+                    Write-StatusLine -Label "Ajout Schema Admins" -Value "Réussi" -Status Success
+                    $results.SchemaAdmins = $true
+                    $results.TempSchemaAdmin = $true
+                } catch {
+                    Write-StatusLine -Label "Ajout Schema Admins" -Value "ÉCHEC — $($_.Exception.Message)" -Status Error
+                }
+            }
+        } else {
+            Write-Host "       Ajoutez votre compte au groupe Schema Admins et renouvelez votre ticket Kerberos." -ForegroundColor $Script:Colors.Warning
+        }
     }
 
     if (-not $results.EnterpriseAdmins) {
@@ -512,11 +530,13 @@ function Invoke-FSMOTransfer {
     # Exécution du transfert
     $successCount = 0
     $failCount = 0
+    $transferStatus = @{}
 
     foreach ($role in $Roles) {
         $roleFriendly = $friendlyNames[$role]
         Write-Host ""
         Write-Host "    ─── Transfert : $roleFriendly ───" -ForegroundColor $Script:Colors.Title
+        $transferStatus[$role] = $false
 
         try {
             # Transfert normal (graceful)
@@ -528,6 +548,7 @@ function Invoke-FSMOTransfer {
 
             Write-StatusLine -Label $roleFriendly -Value "Transféré avec succès vers $($TargetDC.HostName)" -Status Success
             $successCount++
+            $transferStatus[$role] = $true
         }
         catch {
             Write-StatusLine -Label $roleFriendly -Value "ÉCHEC — $($_.Exception.Message)" -Status Error
@@ -542,6 +563,8 @@ function Invoke-FSMOTransfer {
     if ($failCount -gt 0) {
         Write-StatusLine -Label "Échoués" -Value "$failCount / $($Roles.Count)" -Status Error
     }
+
+    return $transferStatus
 }
 
 function Show-PostTransferVerification {
@@ -637,10 +660,22 @@ function Main {
     }
 
     # ── Étape 8 : Exécution du transfert ──
-    Invoke-FSMOTransfer -TargetDC $targetDC -Roles $selectedRoles
+    $transferResults = Invoke-FSMOTransfer -TargetDC $targetDC -Roles $selectedRoles
 
     # ── Étape 9 : Vérification post-transfert ──
     Show-PostTransferVerification
+
+    # ── Étape 10 : Nettoyage temporaire Schema Admins ──
+    if ($groupStatus.TempSchemaAdmin -and $transferResults['SchemaMaster']) {
+        if (Confirm-Action "Le rôle Schema Master a été transféré avec succès. Voulez-vous être retiré du groupe Schema Admins ?") {
+            try {
+                Remove-ADGroupMember -Identity $groupStatus.SchemaGroup -Members $groupStatus.SamName -Confirm:$false -ErrorAction Stop
+                Write-StatusLine -Label "Retrait Schema Admins" -Value "Réussi" -Status Success
+            } catch {
+                Write-StatusLine -Label "Retrait Schema Admins" -Value "ÉCHEC — $($_.Exception.Message)" -Status Error
+            }
+        }
+    }
 
     # ── Fin ──
     Write-Host ""

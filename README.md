@@ -12,6 +12,7 @@ Le script guide l'administrateur étape par étape dans le processus de transfer
    - S'assure que la console PowerShell est exécutée avec les privilèges Administrateur.
    - Vérifie la présence et le chargement du module PowerShell `ActiveDirectory`.
    - Analyse l'appartenance de l'utilisateur courant aux groupes critiques (`Schema Admins`, `Enterprise Admins`, `Domain Admins`).
+   - *NOUVEAU* : Propose une **élévation temporaire** au groupe `Schema Admins` si l'utilisateur est un `Domain Admin`, puis retire cette élévation proprement à la fin de l'opération si le transfert du Schema Master a réussi.
 2. **Gestion des tickets Kerberos :**
    - Propose de purger et de renouveler automatiquement les tickets Kerberos (utile si l'utilisateur vient d'être ajouté au groupe `Schema Admins`).
 3. **Découverte interactive de l'environnement :**
