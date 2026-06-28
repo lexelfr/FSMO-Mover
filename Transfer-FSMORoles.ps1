@@ -143,12 +143,16 @@ function Test-SchemaAdminMembership {
         $configDN = $rootDSE.configurationNamingContext
         $domainDN = $rootDSE.defaultNamingContext
 
+        $domainSID = (Get-ADDomain).DomainSID.Value
+        $rootDomain = (Get-ADForest).RootDomain
+        $rootDomainSID = (Get-ADDomain -Identity $rootDomain).DomainSID.Value
+
         # Schema Admins
         try {
             $schemaAdminsGroup = Get-ADGroup -Filter "Name -eq 'Schema Admins' -or Name -eq 'Admins du schéma' -or Name -eq 'Admins du schema'" -SearchBase $domainDN
             if (-not $schemaAdminsGroup) {
-                # Tenter via le SID bien connu (S-1-5-21-<domain>-518)
-                $schemaAdminsGroup = Get-ADGroup -Filter "SID -like '*-518'"
+                # Tenter via le SID (S-1-5-21-<rootdomain>-518)
+                $schemaAdminsGroup = Get-ADGroup -Identity "$rootDomainSID-518"
             }
             if ($schemaAdminsGroup) {
                 $results.SchemaGroup = $schemaAdminsGroup
@@ -163,7 +167,7 @@ function Test-SchemaAdminMembership {
             $enterpriseAdminsGroup = Get-ADGroup -Filter "Name -eq 'Enterprise Admins' -or Name -eq 'Administrateurs de l''entreprise'" -SearchBase $domainDN
             if (-not $enterpriseAdminsGroup) {
                 # SID fallback (Enterprise Admins = 519)
-                $enterpriseAdminsGroup = Get-ADGroup -Filter "SID -like '*-519'"
+                $enterpriseAdminsGroup = Get-ADGroup -Identity "$rootDomainSID-519"
             }
             if ($enterpriseAdminsGroup) {
                 $members = Get-ADGroupMember -Identity $enterpriseAdminsGroup -Recursive | Select-Object -ExpandProperty SamAccountName
@@ -177,7 +181,7 @@ function Test-SchemaAdminMembership {
             $domainAdminsGroup = Get-ADGroup -Filter "Name -eq 'Domain Admins' -or Name -eq 'Admins du domaine'" -SearchBase $domainDN
             if (-not $domainAdminsGroup) {
                 # SID fallback (Domain Admins = 512)
-                $domainAdminsGroup = Get-ADGroup -Filter "SID -like '*-512'"
+                $domainAdminsGroup = Get-ADGroup -Identity "$domainSID-512"
             }
             if ($domainAdminsGroup) {
                 $members = Get-ADGroupMember -Identity $domainAdminsGroup -Recursive | Select-Object -ExpandProperty SamAccountName
