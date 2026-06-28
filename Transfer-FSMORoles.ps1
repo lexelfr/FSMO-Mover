@@ -160,9 +160,10 @@ function Test-SchemaAdminMembership {
 
         # Enterprise Admins
         try {
-            $enterpriseAdminsGroup = Get-ADGroup -Filter "Name -eq 'Enterprise Admins'" -SearchBase $domainDN
+            $enterpriseAdminsGroup = Get-ADGroup -Filter "Name -eq 'Enterprise Admins' -or Name -eq 'Administrateurs de l''entreprise'" -SearchBase $domainDN
             if (-not $enterpriseAdminsGroup) {
-                $enterpriseAdminsGroup = Get-ADGroup -Filter "Name -eq 'Administrateurs de l''entreprise'" -SearchBase $domainDN
+                # SID fallback (Enterprise Admins = 519)
+                $enterpriseAdminsGroup = Get-ADGroup -Filter "SID -like '*-519'"
             }
             if ($enterpriseAdminsGroup) {
                 $members = Get-ADGroupMember -Identity $enterpriseAdminsGroup -Recursive | Select-Object -ExpandProperty SamAccountName
@@ -174,6 +175,10 @@ function Test-SchemaAdminMembership {
         # Domain Admins
         try {
             $domainAdminsGroup = Get-ADGroup -Filter "Name -eq 'Domain Admins' -or Name -eq 'Admins du domaine'" -SearchBase $domainDN
+            if (-not $domainAdminsGroup) {
+                # SID fallback (Domain Admins = 512)
+                $domainAdminsGroup = Get-ADGroup -Filter "SID -like '*-512'"
+            }
             if ($domainAdminsGroup) {
                 $members = Get-ADGroupMember -Identity $domainAdminsGroup -Recursive | Select-Object -ExpandProperty SamAccountName
                 $results.DomainAdmins = $members -contains $samName
