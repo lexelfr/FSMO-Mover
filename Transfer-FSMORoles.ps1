@@ -145,25 +145,18 @@ function Test-SchemaAdminMembership {
 
         # Schema Admins
         try {
-            $schemaAdminsGroup = Get-ADGroup -Filter "Name -eq 'Schema Admins'" -SearchBase $domainDN
+            $schemaAdminsGroup = Get-ADGroup -Filter "Name -eq 'Schema Admins' -or Name -eq 'Admins du schéma' -or Name -eq 'Admins du schema'" -SearchBase $domainDN
+            if (-not $schemaAdminsGroup) {
+                # Tenter via le SID bien connu (S-1-5-21-<domain>-518)
+                $schemaAdminsGroup = Get-ADGroup -Filter "SID -like '*-518'"
+            }
             if ($schemaAdminsGroup) {
                 $results.SchemaGroup = $schemaAdminsGroup
                 $members = Get-ADGroupMember -Identity $schemaAdminsGroup -Recursive | Select-Object -ExpandProperty SamAccountName
                 $results.SchemaAdmins = $members -contains $samName
             }
         }
-        catch {
-            # Tenter via le SID bien connu (S-1-5-21-<domain>-518)
-            try {
-                $schemaAdminsGroup = Get-ADGroup -Filter "SID -like '*-518'"
-                if ($schemaAdminsGroup) {
-                    $results.SchemaGroup = $schemaAdminsGroup
-                    $members = Get-ADGroupMember -Identity $schemaAdminsGroup -Recursive | Select-Object -ExpandProperty SamAccountName
-                    $results.SchemaAdmins = $members -contains $samName
-                }
-            }
-            catch { }
-        }
+        catch { }
 
         # Enterprise Admins
         try {
